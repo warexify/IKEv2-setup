@@ -1,20 +1,18 @@
 #!/bin/bash -e
-
 # == Update to 18.04 if required:
 # apt-get update
 # do-release-upgrade
-
 # == Then run this script
-# wget https://raw.githubusercontent.com/jawj/IKEv2-setup/master/setup.sh
+# curl -LO https://raw.githubusercontent.com/warexify/IKEv2-setup/master/setup.sh
 # chmod u+x setup.sh
 # ./setup.sh
 
 echo
-echo "=== https://github.com/jawj/IKEv2-setup ==="
+echo "=== https://github.com/warexify/IKEv2-setup ==="
 echo
 
 function exit_badly {
-  echo $1
+  echo "$1"
   exit 1
 }
 
@@ -25,40 +23,40 @@ echo "--- Configuration: VPN settings ---"
 echo
 
 echo "** Note: hostname must resolve to this machine already, to enable Let's Encrypt certificate setup **"
-read -p "Hostname for VPN (e.g. vpn.example.com): " VPNHOST
+read -r -p "Hostname for VPN (e.g. vpn.example.com): " VPNHOST
 
 VPNHOSTIP=$(dig -4 +short "$VPNHOST")
 [[ -n "$VPNHOSTIP" ]] || exit_badly "Cannot resolve VPN hostname, aborting"
 
-read -p "VPN username: " VPNUSERNAME
+read -r -p "VPN username: " VPNUSERNAME
 while true; do
-read -s -p "VPN password (no quotes, please): " VPNPASSWORD
-echo
-read -s -p "Confirm VPN password: " VPNPASSWORD2
-echo
-[ "$VPNPASSWORD" = "$VPNPASSWORD2" ] && break
-echo "Passwords didn't match -- please try again"
+  read -r -s -p "VPN password (no quotes, please): " VPNPASSWORD
+  echo
+  read -r -s -p "Confirm VPN password: " VPNPASSWORD2
+  echo
+  [ "$VPNPASSWORD" = "$VPNPASSWORD2" ] && break
+  echo "Passwords didn't match -- please try again"
 done
 
 echo
 echo "--- Configuration: general server settings ---"
 echo
 
-read -p "Timezone (default: Europe/London): " TZONE
-TZONE=${TZONE:-'Europe/London'}
+read -r -p "Timezone (default: Europe/Moscow): " TZONE
+TZONE=${TZONE:-'Europe/Moscow'}
 
-read -p "Email address for sysadmin (e.g. j.bloggs@example.com): " EMAILADDR
+read -r -p "Email address for sysadmin (e.g. warexify@outlook.com): " EMAILADDR
 
 echo
 
-read -p "SSH log-in port (default: 22): " SSHPORT
+read -r -p "SSH log-in port (default: 22): " SSHPORT
 SSHPORT=${SSHPORT:-22}
 
-read -p "SSH log-in username: " LOGINUSERNAME
+read -r -p "SSH log-in username: " LOGINUSERNAME
 while true; do
-  read -s -p "SSH log-in password (must be REALLY STRONG): " LOGINPASSWORD
+  read -r -s -p "SSH log-in password (must be REALLY STRONG): " LOGINPASSWORD
   echo
-  read -s -p "Confirm SSH log-in password: " LOGINPASSWORD2
+  read -r -s -p "Confirm SSH log-in password: " LOGINPASSWORD2
   echo
   [ "$LOGINPASSWORD" = "$LOGINPASSWORD2" ] && break
   echo "Passwords didn't match -- please try again"
@@ -75,23 +73,23 @@ echo
 export DEBIAN_FRONTEND=noninteractive
 apt-get -o Acquire::ForceIPv4=true update && apt-get upgrade -y
 
-debconf-set-selections <<< "postfix postfix/mailname string ${VPNHOST}"
+debconf-set-selections <<< "postfix postfix/mailname string $VPNHOST"
 debconf-set-selections <<< "postfix postfix/main_mailer_type string 'Internet Site'"
 
 apt-get install -y language-pack-en strongswan libstrongswan-standard-plugins strongswan-libcharon libcharon-standard-plugins libcharon-extra-plugins moreutils iptables-persistent postfix mutt unattended-upgrades certbot
 
 
 ETH0ORSIMILAR=$(ip route get 8.8.8.8 | awk -- '{printf $5}')
-IP=$(ifdata -pa $ETH0ORSIMILAR)
+IP=$(ifdata -pa "$ETH0ORSIMILAR")
 
 echo
-echo "Network interface: ${ETH0ORSIMILAR}"
-echo "External IP: ${IP}"
+echo "Network interface: $ETH0ORSIMILAR"
+echo "External IP: $IP"
 
 if [[ "$IP" != "$VPNHOSTIP" ]]; then
   echo "Warning: $VPNHOST resolves to $VPNHOSTIP, not $IP"
   echo "Either you are behind NAT, or something is wrong (e.g. hostname points to wrong IP, CloudFlare proxying shenanigans, ...)"
-  read -p "Press [Return] to continue, or Ctrl-C to abort" DUMMYVAR
+  read -r -p "Press [Return] to continue, or Ctrl-C to abort" DUMMYVAR
 fi
 
 echo
@@ -123,11 +121,11 @@ iptables -A INPUT -i lo -j ACCEPT
 iptables -A INPUT -m state --state INVALID -j DROP
 
 # rate-limit repeated new requests from same IP to any ports
-iptables -I INPUT -i $ETH0ORSIMILAR -m state --state NEW -m recent --set
-iptables -I INPUT -i $ETH0ORSIMILAR -m state --state NEW -m recent --update --seconds 60 --hitcount 12 -j DROP
+iptables -I INPUT -i "$ETH0ORSIMILAR" -m state --state NEW -m recent --set
+iptables -I INPUT -i "$ETH0ORSIMILAR" -m state --state NEW -m recent --update --seconds 60 --hitcount 12 -j DROP
 
 # accept (non-standard) SSH
-iptables -A INPUT -p tcp --dport $SSHPORT -j ACCEPT
+iptables -A INPUT -p tcp --dport "$SSHPORT" -j ACCEPT
 
 
 # VPN
@@ -141,11 +139,11 @@ iptables -A FORWARD --match policy --pol ipsec --dir in  --proto esp -s $VPNIPPO
 iptables -A FORWARD --match policy --pol ipsec --dir out --proto esp -d $VPNIPPOOL -j ACCEPT
 
 # reduce MTU/MSS values for dumb VPN clients
-iptables -t mangle -A FORWARD --match policy --pol ipsec --dir in -s $VPNIPPOOL -o $ETH0ORSIMILAR -p tcp -m tcp --tcp-flags SYN,RST SYN -m tcpmss --mss 1361:1536 -j TCPMSS --set-mss 1360
+iptables -t mangle -A FORWARD --match policy --pol ipsec --dir in -s $VPNIPPOOL -o "$ETH0ORSIMILAR" -p tcp -m tcp --tcp-flags SYN,RST SYN -m tcpmss --mss 1361:1536 -j TCPMSS --set-mss 1360
 
 # masquerade VPN traffic over eth0 etc.
-iptables -t nat -A POSTROUTING -s $VPNIPPOOL -o $ETH0ORSIMILAR -m policy --pol ipsec --dir out -j ACCEPT  # exempt IPsec traffic from masquerading
-iptables -t nat -A POSTROUTING -s $VPNIPPOOL -o $ETH0ORSIMILAR -j MASQUERADE
+iptables -t nat -A POSTROUTING -s $VPNIPPOOL -o "$ETH0ORSIMILAR" -m policy --pol ipsec --dir out -j ACCEPT  # exempt IPsec traffic from masquerading
+iptables -t nat -A POSTROUTING -s $VPNIPPOOL -o "$ETH0ORSIMILAR" -j MASQUERADE
 
 
 # fall through to drop any other input and forward traffic
@@ -172,15 +170,15 @@ post-hook = /sbin/iptables -D INPUT -p tcp --dport 80 -j ACCEPT
 renew-hook = /usr/sbin/ipsec reload && /usr/sbin/ipsec secrets
 ' > /etc/letsencrypt/cli.ini
 
-certbot certonly --non-interactive --agree-tos --standalone --preferred-challenges http --email $EMAILADDR -d $VPNHOST
+certbot certonly --non-interactive --agree-tos --standalone --preferred-challenges http --email "$EMAILADDR" -d "$VPNHOST"
 
-ln -f -s /etc/letsencrypt/live/$VPNHOST/cert.pem    /etc/ipsec.d/certs/cert.pem
-ln -f -s /etc/letsencrypt/live/$VPNHOST/privkey.pem /etc/ipsec.d/private/privkey.pem
-ln -f -s /etc/letsencrypt/live/$VPNHOST/chain.pem   /etc/ipsec.d/cacerts/chain.pem
+ln -f -s /etc/letsencrypt/live/"$VPNHOST"/cert.pem    /etc/ipsec.d/certs/cert.pem
+ln -f -s /etc/letsencrypt/live/"$VPNHOST"/privkey.pem /etc/ipsec.d/private/privkey.pem
+ln -f -s /etc/letsencrypt/live/"$VPNHOST"/chain.pem   /etc/ipsec.d/cacerts/chain.pem
 
-grep -Fq 'jawj/IKEv2-setup' /etc/apparmor.d/local/usr.lib.ipsec.charon || echo "
-# https://github.com/jawj/IKEv2-setup
-/etc/letsencrypt/archive/${VPNHOST}/* r,
+grep -Fq 'warexify/IKEv2-setup' /etc/apparmor.d/local/usr.lib.ipsec.charon || echo "
+# https://github.com/warexify/IKEv2-setup
+/etc/letsencrypt/archive/$VPNHOST/* r,
 " >> /etc/apparmor.d/local/usr.lib.ipsec.charon
 
 aa-status --enabled && invoke-rc.d apparmor reload
@@ -194,8 +192,8 @@ echo
 # ip_no_pmtu_disc is for UDP fragmentation
 # others are for security
 
-grep -Fq 'jawj/IKEv2-setup' /etc/sysctl.conf || echo '
-# https://github.com/jawj/IKEv2-setup
+grep -Fq 'warexify/IKEv2-setup' /etc/sysctl.conf || echo '
+# https://github.com/warexify/IKEv2-setup
 net.ipv4.ip_forward = 1
 net.ipv4.ip_no_pmtu_disc = 1
 net.ipv4.conf.all.rp_filter = 1
@@ -229,7 +227,7 @@ conn roadwarrior
   dpddelay=180s
   rekey=no
   left=%any
-  leftid=@${VPNHOST}
+  leftid=@$VPNHOST
   leftcert=cert.pem
   leftsendcert=always
   leftsubnet=0.0.0.0/0
@@ -237,13 +235,13 @@ conn roadwarrior
   rightid=%any
   rightauth=eap-mschapv2
   eap_identity=%any
-  rightdns=8.8.8.8,8.8.4.4
-  rightsourceip=${VPNIPPOOL}
+  rightdns=1.1.1.1,1.0.0.1
+  rightsourceip=$VPNIPPOOL
   rightsendcert=never
 " > /etc/ipsec.conf
 
-echo "${VPNHOST} : RSA \"privkey.pem\"
-${VPNUSERNAME} : EAP \""${VPNPASSWORD}"\"
+echo "$VPNHOST : RSA \"privkey.pem\"
+$VPNUSERNAME : EAP \""$VPNPASSWORD"\"
 " > /etc/ipsec.secrets
 
 ipsec restart
@@ -256,20 +254,20 @@ echo
 
 # user + SSH
 
-id -u $LOGINUSERNAME &>/dev/null || adduser --disabled-password --gecos "" $LOGINUSERNAME
-echo "${LOGINUSERNAME}:${LOGINPASSWORD}" | chpasswd
-adduser ${LOGINUSERNAME} sudo
+id -u "$LOGINUSERNAME" &>/dev/null || adduser --disabled-password --gecos "" "$LOGINUSERNAME"
+echo "$LOGINUSERNAME:$LOGINPASSWORD" | chpasswd
+adduser "$LOGINUSERNAME" sudo
 
 sed -r \
--e "s/^#?Port 22$/Port ${SSHPORT}/" \
+-e "s/^#?Port 22$/Port $SSHPORT/" \
 -e 's/^#?LoginGraceTime (120|2m)$/LoginGraceTime 30/' \
 -e 's/^#?PermitRootLogin yes$/PermitRootLogin no/' \
 -e 's/^#?X11Forwarding yes$/X11Forwarding no/' \
 -e 's/^#?UsePAM yes$/UsePAM no/' \
 -i.original /etc/ssh/sshd_config
 
-grep -Fq 'jawj/IKEv2-setup' /etc/ssh/sshd_config || echo "
-# https://github.com/jawj/IKEv2-setup
+grep -Fq 'warexify/IKEv2-setup' /etc/ssh/sshd_config || echo "
+# https://github.com/warexify/IKEv2-setup
 MaxStartups 1
 MaxAuthTries 2
 UseDNS no" >> /etc/ssh/sshd_config
@@ -281,19 +279,19 @@ echo
 echo "--- Timezone, mail, unattended upgrades ---"
 echo
 
-timedatectl set-timezone $TZONE
-/usr/sbin/update-locale LANG=en_GB.UTF-8
+timedatectl set-timezone "$TZONE"
+/usr/sbin/update-locale LANG=en_US.UTF-8
 
 
 sed -r \
--e "s/^myhostname =.*$/myhostname = ${VPNHOST}/" \
+-e "s/^myhostname =.*$/myhostname = $VPNHOST/" \
 -e 's/^inet_interfaces =.*$/inet_interfaces = loopback-only/' \
 -i.original /etc/postfix/main.cf
 
-grep -Fq 'jawj/IKEv2-setup' /etc/aliases || echo "
-# https://github.com/jawj/IKEv2-setup
-root: ${EMAILADDR}
-${LOGINUSERNAME}: ${EMAILADDR}
+grep -Fq 'warexify/IKEv2-setup' /etc/aliases || echo "
+# https://github.com/warexify/IKEv2-setup
+root: $EMAILADDR
+$LOGINUSERNAME: $EMAILADDR
 " >> /etc/aliases
 
 newaliases
@@ -320,7 +318,7 @@ echo
 echo "--- Creating configuration files ---"
 echo
 
-cd /home/${LOGINUSERNAME}
+cd /home/"$LOGINUSERNAME"
 
 cat << EOF > vpn-ios-or-mac.mobileconfig
 <?xml version='1.0' encoding='UTF-8'?>
@@ -369,7 +367,7 @@ cat << EOF > vpn-ios-or-mac.mobileconfig
           <integer>1440</integer>
         </dict>
         <key>LocalIdentifier</key>
-        <string>${VPNHOST}</string>
+        <string>$VPNHOST</string>
         <key>OnDemandEnabled</key>
         <integer>1</integer>
         <key>OnDemandRules</key>
@@ -380,9 +378,9 @@ cat << EOF > vpn-ios-or-mac.mobileconfig
           </dict>
         </array>
         <key>RemoteAddress</key>
-        <string>${VPNHOST}</string>
+        <string>$VPNHOST</string>
         <key>RemoteIdentifier</key>
-        <string>${VPNHOST}</string>
+        <string>$VPNHOST</string>
         <key>UseConfigurationAttributeInternalIPSubnet</key>
         <integer>0</integer>
       </dict>
@@ -411,13 +409,13 @@ cat << EOF > vpn-ios-or-mac.mobileconfig
         <integer>0</integer>
       </dict>
       <key>UserDefinedName</key>
-      <string>${VPNHOST}</string>
+      <string>$VPNHOST</string>
       <key>VPNType</key>
       <string>IKEv2</string>
     </dict>
   </array>
   <key>PayloadDisplayName</key>
-  <string>IKEv2 VPN configuration (${VPNHOST})</string>
+  <string>IKEv2 VPN configuration ($VPNHOST)</string>
   <key>PayloadIdentifier</key>
   <string>com.mackerron.vpn.$(uuidgen)</string>
   <key>PayloadRemovalDisallowed</key>
@@ -451,29 +449,29 @@ apt-get install -y libcharon-standard-plugins || true  # 17.04+ only
 
 ln -f -s /etc/ssl/certs/DST_Root_CA_X3.pem /etc/ipsec.d/cacerts/
 
-grep -Fq 'jawj/IKEv2-setup' /etc/ipsec.conf || echo "
-# https://github.com/jawj/IKEv2-setup
+grep -Fq 'warexify/IKEv2-setup' /etc/ipsec.conf || echo "
+# https://github.com/warexify/IKEv2-setup
 conn ikev2vpn
-        ikelifetime=60m
-        keylife=20m
-        rekeymargin=3m
-        keyingtries=1
-        keyexchange=ikev2
-        ike=aes256gcm16-sha256-ecp521!
-        esp=aes256gcm16-sha256!
-        leftsourceip=%config
-        leftauth=eap-mschapv2
-        eap_identity=\${VPNUSERNAME}
-        right=${VPNHOST}
-        rightauth=pubkey
-        rightid=@${VPNHOST}
-        rightsubnet=0.0.0.0/0
-        auto=add  # or auto=start to bring up automatically
+  ikelifetime=60m
+  keylife=20m
+  rekeymargin=3m
+  keyingtries=1
+  keyexchange=ikev2
+  ike=aes256gcm16-sha256-ecp521!
+  esp=aes256gcm16-sha256!
+  leftsourceip=%config
+  leftauth=eap-mschapv2
+  eap_identity=\$VPNUSERNAME
+  right=$VPNHOST
+  rightauth=pubkey
+  rightid=@$VPNHOST
+  rightsubnet=0.0.0.0/0
+  auto=add  # or auto=start to bring up automatically
 " >> /etc/ipsec.conf
 
-grep -Fq 'jawj/IKEv2-setup' /etc/ipsec.secrets || echo "
-# https://github.com/jawj/IKEv2-setup
-\${VPNUSERNAME} : EAP \"\${VPNPASSWORD}\"
+grep -Fq 'warexify/IKEv2-setup' /etc/ipsec.secrets || echo "
+# https://github.com/warexify/IKEv2-setup
+\$VPNUSERNAME : EAP \"\$VPNPASSWORD\"
 " >> /etc/ipsec.secrets
 
 ipsec restart
@@ -485,9 +483,9 @@ ipsec statusall
 
 echo
 echo -n "Testing IP address ... "
-VPNIP=\$(dig -4 +short ${VPNHOST})
+VPNIP=\$(dig -4 +short $VPNHOST)
 ACTUALIP=\$(curl -s ifconfig.co)
-if [[ "\$VPNIP" == "\$ACTUALIP" ]]; then echo "PASSED (IP: \${VPNIP})"; else echo "FAILED (IP: \${ACTUALIP}, VPN IP: \${VPNIP})"; fi
+if [[ "\$VPNIP" == "\$ACTUALIP" ]]; then echo "PASSED (IP: \$VPNIP)"; else echo "FAILED (IP: \$ACTUALIP, VPN IP: \$VPNIP)"; fi
 
 echo
 echo "To disconnect: ipsec down ikev2vpn"
@@ -505,14 +503,14 @@ A configuration profile is attached as vpn-ios-or-mac.mobileconfig — simply op
 
 You will need Windows 10 Pro or above. Please run the following commands in PowerShell:
 
-Add-VpnConnection -Name "${VPNHOST}" \`
-  -ServerAddress "${VPNHOST}" \`
+Add-VpnConnection -Name "$VPNHOST" \`
+  -ServerAddress "$VPNHOST" \`
   -TunnelType IKEv2 \`
   -EncryptionLevel Maximum \`
   -AuthenticationMethod EAP \`
   -RememberCredential
 
-Set-VpnConnectionIPsecConfiguration -ConnectionName "${VPNHOST}" \`
+Set-VpnConnectionIPsecConfiguration -ConnectionName "$VPNHOST" \`
   -AuthenticationTransformConstants GCMAES256 \`
   -CipherTransformConstants GCMAES256 \`
   -EncryptionMethod AES256 \`
@@ -526,7 +524,7 @@ Set-VpnConnectionIPsecConfiguration -ConnectionName "${VPNHOST}" \`
 
 Download the strongSwan app from the Play Store: https://play.google.com/store/apps/details?id=org.strongswan.android
 
-Server: ${VPNHOST}
+Server: $VPNHOST
 VPN Type: IKEv2 EAP (Username/Password)
 Username and password: as configured on the server
 CA certificate: Select automatically
@@ -538,14 +536,13 @@ A bash script to set up strongSwan as a VPN client is attached as vpn-ubuntu-cli
 
 EOF
 
-cat vpn-instructions.txt | EMAIL=$USER@$VPNHOST mutt -s "VPN configuration" -a vpn-ios-or-mac.mobileconfig vpn-ubuntu-client.sh -- $EMAILADDR
+EMAIL=$USER@$VPNHOST mutt -s "VPN configuration" -a vpn-ios-or-mac.mobileconfig vpn-ubuntu-client.sh -- "$EMAILADDR" < vpn-instructions.txt
 
 echo
 echo "--- How to connect ---"
 echo
-echo "Connection instructions have been emailed to you, and can also be found in your home directory, /home/${LOGINUSERNAME}"
+echo "Connection instructions have been emailed to you, and can also be found in your home directory, /home/$LOGINUSERNAME"
 
 # necessary for IKEv2?
 # Windows: https://support.microsoft.com/en-us/kb/926179
 # HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\PolicyAgent += AssumeUDPEncapsulationContextOnSendRule, DWORD = 2
-
